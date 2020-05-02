@@ -1,6 +1,6 @@
 [package]
 name = "bigquery-storage"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Open-Source <opensource@openquery.io>"]
 description = "A small wrapper around the Google BigQuery Storage API"
 keywords = [ "google", "bigquery" ]

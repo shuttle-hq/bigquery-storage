@@ -1,5 +1,5 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::configure().compile(
+    tonic_build::configure().format(false).compile(
         &[
             "googleapis/google/cloud/bigquery/storage/v1/arrow.proto",
             "googleapis/google/cloud/bigquery/storage/v1/avro.proto",

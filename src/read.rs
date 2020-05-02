@@ -1,17 +1,17 @@
-use tonic::{Streaming};
+use tonic::Streaming;
 
 use futures::future::ready;
 use futures::stream::{StreamExt, TryStreamExt};
 
-use std::io::{Cursor};
+use std::io::Cursor;
 
 use crate::googleapis::{
     read_rows_response::Rows, read_session::Schema, ArrowRecordBatch, ArrowSchema, ReadRowsResponse,
 };
-use crate::{Error};
+use crate::Error;
 
 #[cfg(feature = "arrow")]
-use arrow::{ipc::reader::StreamReader as ArrowStreamReader};
+use arrow::ipc::reader::StreamReader as ArrowStreamReader;
 
 /// Remove the continuation bytes segment of a valid Arrow IPC message
 #[cfg(feature = "arrow")]
