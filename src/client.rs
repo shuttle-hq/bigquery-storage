@@ -19,8 +19,6 @@
 //!     Ok(())
 //! }
 //! ```
-use std::sync::{Arc, Mutex};
-
 use hyper::client::connect::Connect;
 use yup_oauth2::authenticator::Authenticator;
 
@@ -28,8 +26,6 @@ use prost_types::Timestamp;
 use tonic::metadata::MetadataValue;
 use tonic::transport::{Channel, ClientTlsConfig};
 use tonic::{Request, Streaming};
-
-use futures::stream::{Stream, StreamExt};
 
 use crate::googleapis::big_query_read_client::BigQueryReadClient;
 use crate::googleapis::{
@@ -40,7 +36,6 @@ use crate::googleapis::{
 use crate::Error;
 use crate::RowsStreamReader;
 
-static SCHEME: &'static str = "https";
 static API_ENDPOINT: &'static str = "https://bigquerystorage.googleapis.com";
 static API_DOMAIN: &'static str = "bigquerystorage.googleapis.com";
 static API_SCOPE: &'static str = "https://www.googleapis.com/auth/bigquery";
@@ -253,7 +248,7 @@ where
     }
     async fn create_read_session(
         &mut self,
-        mut req: CreateReadSessionRequest,
+        req: CreateReadSessionRequest,
     ) -> Result<BigQueryReadSession, Error> {
         let table_uri = &req.read_session.as_ref().unwrap().table;
         let params = format!("read_session.table={}", table_uri);
