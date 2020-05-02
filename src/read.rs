@@ -29,16 +29,18 @@ fn strip_continuation_bytes(msg: &[u8]) -> Result<&[u8], Error> {
 #[cfg(feature = "arrow")]
 pub type DefaultArrowStreamReader = ArrowStreamReader<Cursor<Vec<u8>>>;
 
+/// A wrapper around a [BigQuery Storage stream](https://cloud.google.com/bigquery/docs/reference/storage#read_from_a_session_stream).
 pub struct RowsStreamReader {
     schema: Schema,
     upstream: Streaming<ReadRowsResponse>
 }
 
 impl RowsStreamReader {
-    pub fn new(schema: Schema, upstream: Streaming<ReadRowsResponse>) -> Self {
+    pub(crate) fn new(schema: Schema, upstream: Streaming<ReadRowsResponse>) -> Self {
         Self { schema, upstream }
     }
 
+    /// Consume the entire stream into an Arrow [StreamReader](arrow::ipc::reader::StreamReader).
     #[cfg(feature = "arrow")]
     pub async fn into_arrow_reader(self) -> Result<DefaultArrowStreamReader, Error> {
         let mut serialized_arrow_stream = self.upstream

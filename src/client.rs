@@ -1,3 +1,19 @@
+//! The main module of this crate.
+//! # Example
+//! To build a [`Client`]() you just need an [`Authenticator`](yup_oauth2::authenticator::Authenticator). For example, if you want to use a service account:
+//! ```rust
+//! // 1. Load the secret
+//! let service_account_key = yup_oauth2::read_service_account_key("clientsecret.json")
+//!     .await?;
+//! 
+//! // 2. Create an Authenticator
+//! let auth = yup_oauth2::ServiceAccountAuthenticator::builder(service_account_key)
+//!     .build()
+//!     .await?;
+//!
+//! // 3. Create a Client
+//! let mut client = bigquery_storage::Client::new(auth).await?;
+//! ```
 use std::sync::{Arc, Mutex};
 
 use yup_oauth2::authenticator::Authenticator;
@@ -13,7 +29,6 @@ use futures::stream::{Stream, StreamExt};
 use crate::googleapis::big_query_read_client::BigQueryReadClient;
 use crate::googleapis::{ReadStream, ReadRowsRequest, ReadRowsResponse, CreateReadSessionRequest, ReadSession as BigQueryReadSession, DataFormat, read_session::{TableModifiers, TableReadOptions}};
 use crate::Error;
-
 use crate::RowsStreamReader;
 
 static SCHEME: &'static str = "https";
@@ -21,7 +36,7 @@ static API_ENDPOINT: &'static str = "https://bigquerystorage.googleapis.com";
 static API_DOMAIN: &'static str = "bigquerystorage.googleapis.com";
 static API_SCOPE: &'static str = "https://www.googleapis.com/auth/bigquery";
 
-/// A fully qualified BigQuery table requires a `project_id`, a `dataset_id`
+/// A fully qualified BigQuery table. This requires a `project_id`, a `dataset_id`
 /// and a `table_id`. Only alphanumerical and underscores are allowed for `dataset_id`
 /// and `table_id`.
 pub struct Table {
@@ -66,6 +81,8 @@ macro_rules! read_session_builder {
             )*
         }
 
+        /// A builder for [`ReadSession`](crate::client::ReadSession).
+        /// When in doubt about what a field does, please refer to [`CreateReadSessionRequest`](crate::googleapis::CreateReadSessionRequest) and the [official API](https://cloud.google.com/bigquery/docs/reference/storage/rpc/google.cloud.bigquery.storage.v1) documentation.
         pub struct ReadSessionBuilder<'a, T> {
             client: &'a mut Client<T>,
             table: Table,
@@ -114,6 +131,8 @@ impl<'a, C> ReadSessionBuilder<'a, C>
 where
     C: Connect + Clone + Send + Sync + 'static
 {
+    /// Build the [`ReadSession`](ReadSession). This will hit Google's API and
+    /// prepare the desired read streams.
     pub async fn build(self) -> Result<ReadSession<'a, C>, Error> {
         let table = self.table.to_string();
 
@@ -162,6 +181,8 @@ where
     }
 }
 
+/// A practical wrapper around a [BigQuery Storage read session](https://cloud.google.com/bigquery/docs/reference/storage#create_a_session).
+/// Do not create it manually, use [`Client::read_session_builder`](Client::read_session_builder) instead.
 pub struct ReadSession<'a, C>{
     client: &'a mut Client<C>,
     inner: BigQueryReadSession
@@ -171,6 +192,7 @@ impl<'a, C> ReadSession<'a, C>
 where
     C: Connect + Clone + Send + Sync + 'static
 {
+    /// Take the next stream in this read session. Returns `None` when all streams have been taken.
     pub async fn next_stream(
         &mut self
     ) -> Result<Option<RowsStreamReader>, Error> {
@@ -189,6 +211,7 @@ where
     }
 }
 
+/// The main object of this crate.
 pub struct Client<C> {
     auth: Authenticator<C>,
     big_query_read_client: BigQueryReadClient<Channel>
@@ -198,6 +221,7 @@ impl<C> Client<C>
 where
     C: Connect + Clone + Send + Sync + 'static
 {
+    /// Create a new client using `auth` as a token generator.
     pub async fn new(auth: Authenticator<C>) -> Result<Self, Error> {
         let tls_config = ClientTlsConfig::new()
             .domain_name(API_DOMAIN);
@@ -208,7 +232,9 @@ where
         let big_query_read_client = BigQueryReadClient::new(channel);
         Ok(Self { auth, big_query_read_client })
     }
-    pub fn read_session(&mut self, table: Table) -> ReadSessionBuilder<'_, C> {
+
+    /// Create a new [`ReadSessionBuilder`](ReadSessionBuilder).
+    pub fn read_session_builder(&mut self, table: Table) -> ReadSessionBuilder<'_, C> {
         ReadSessionBuilder::new(self, table)
     }
     async fn new_request<D>(&self, t: D, params: &str) -> Result<Request<D>, Error> {
@@ -284,27 +310,23 @@ mod tests {
             );
 
             let mut read_session = client
-                .read_session(test_table)
+                .read_session_builder(test_table)
                 .parent_project_id("openquery-dev".to_string())
                 .build()
                 .await
                 .unwrap();
 
-            let stream_reader = read_session
-                .next_stream()
-                .await
-                .unwrap()
-                .expect("did not get any stream");
-
-            let mut arrow_stream_reader = stream_reader
-                .into_arrow_reader()
-                .await
-                .unwrap();
-
-            arrow_stream_reader
-                .next()
-                .unwrap()
-                .expect("no record batch");
+            let mut num_rows = 0;
+            while let Some(stream_reader) = read_session.next_stream().await.unwrap() {
+                let mut arrow_stream_reader = stream_reader
+                    .into_arrow_reader()
+                    .await
+                    .unwrap();
+                while let Some(record_batch) = arrow_stream_reader.next().unwrap() {
+                    num_rows += record_batch.num_rows();
+                }
+            }
+            panic!()
         })
     }
 }
