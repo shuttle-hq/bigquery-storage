@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "googleapis/google/cloud/bigquery/storage/v1/storage.proto",
             "googleapis/google/cloud/bigquery/storage/v1/stream.proto",
         ],
-        &["googleapis"]
+        &["googleapis"],
     )?;
     Ok(())
 }

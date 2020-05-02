@@ -7,32 +7,36 @@
 //!     // 1. Load the desired secret (here, a service account key)
 //!     let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
 //!         .await?;
-//! 
+//!
 //!     // 2. Create an Authenticator
 //!     let auth = yup_oauth2::ServiceAccountAuthenticator::builder(sa_key)
 //!         .build()
 //!         .await?;
-//! 
+//!
 //!     // 3. Create a Client
 //!     let mut client = bigquery_storage::Client::new(auth).await?;
-//! 
+//!
 //!     Ok(())
 //! }
 //! ```
 use std::sync::{Arc, Mutex};
 
-use yup_oauth2::authenticator::Authenticator;
 use hyper::client::connect::Connect;
+use yup_oauth2::authenticator::Authenticator;
 
+use prost_types::Timestamp;
+use tonic::metadata::MetadataValue;
 use tonic::transport::{Channel, ClientTlsConfig};
 use tonic::{Request, Streaming};
-use tonic::metadata::MetadataValue;
-use prost_types::Timestamp;
 
 use futures::stream::{Stream, StreamExt};
 
 use crate::googleapis::big_query_read_client::BigQueryReadClient;
-use crate::googleapis::{ReadStream, ReadRowsRequest, ReadRowsResponse, CreateReadSessionRequest, ReadSession as BigQueryReadSession, DataFormat, read_session::{TableModifiers, TableReadOptions}};
+use crate::googleapis::{
+    read_session::{TableModifiers, TableReadOptions},
+    CreateReadSessionRequest, DataFormat, ReadRowsRequest, ReadRowsResponse,
+    ReadSession as BigQueryReadSession, ReadStream,
+};
 use crate::Error;
 use crate::RowsStreamReader;
 
@@ -55,7 +59,7 @@ impl Table {
         Self {
             project_id: project_id.to_string(),
             dataset_id: dataset_id.to_string(),
-            table_id: table_id.to_string()
+            table_id: table_id.to_string(),
         }
     }
 }
@@ -65,9 +69,7 @@ impl std::fmt::Display for Table {
         write!(
             f,
             "projects/{}/datasets/{}/tables/{}",
-            self.project_id,
-            self.dataset_id,
-            self.table_id
+            self.project_id, self.dataset_id, self.table_id
         )
     }
 }
@@ -134,7 +136,7 @@ read_session_builder! {
 
 impl<'a, C> ReadSessionBuilder<'a, C>
 where
-    C: Connect + Clone + Send + Sync + 'static
+    C: Connect + Clone + Send + Sync + 'static,
 {
     /// Build the [`ReadSession`](ReadSession). This will hit Google's API and
     /// prepare the desired read streams.
@@ -151,7 +153,7 @@ where
 
         if let Some(snapshot_time) = self.opts.snapshot_time {
             inner.table_modifiers = Some(TableModifiers {
-                snapshot_time: Some(snapshot_time)
+                snapshot_time: Some(snapshot_time),
             });
         }
 
@@ -164,54 +166,49 @@ where
             tro.row_restriction = row_restriction;
         }
 
-        let parent_project_id = self.opts.parent_project_id
-            .unwrap_or(self.table.project_id);
+        let parent_project_id = self.opts.parent_project_id.unwrap_or(self.table.project_id);
         let parent = format!("projects/{}", parent_project_id);
         let max_stream_count = self.opts.max_stream_count.unwrap_or_default();
 
         let req = CreateReadSessionRequest {
             parent,
             read_session: Some(inner),
-            max_stream_count
+            max_stream_count,
         };
 
-        let inner = self.client
-            .create_read_session(req)
-            .await?;
+        let inner = self.client.create_read_session(req).await?;
 
         Ok(ReadSession {
             client: self.client,
-            inner
+            inner,
         })
     }
 }
 
 /// A practical wrapper around a [BigQuery Storage read session](https://cloud.google.com/bigquery/docs/reference/storage#create_a_session).
 /// Do not create it manually, use [`Client::read_session_builder`](Client::read_session_builder) instead.
-pub struct ReadSession<'a, C>{
+pub struct ReadSession<'a, C> {
     client: &'a mut Client<C>,
-    inner: BigQueryReadSession
+    inner: BigQueryReadSession,
 }
 
 impl<'a, C> ReadSession<'a, C>
 where
-    C: Connect + Clone + Send + Sync + 'static
+    C: Connect + Clone + Send + Sync + 'static,
 {
     /// Take the next stream in this read session. Returns `None` when all streams have been taken.
-    pub async fn next_stream(
-        &mut self
-    ) -> Result<Option<RowsStreamReader>, Error> {
+    pub async fn next_stream(&mut self) -> Result<Option<RowsStreamReader>, Error> {
         match self.inner.streams.pop() {
             Some(ReadStream { name }) => {
-                let rows_stream = self.client
-                    .read_stream_rows(&name)
-                    .await?;
-                let schema = self.inner.schema
+                let rows_stream = self.client.read_stream_rows(&name).await?;
+                let schema = self
+                    .inner
+                    .schema
                     .clone()
                     .ok_or(Error::invalid("empty schema response"))?;
                 Ok(Some(RowsStreamReader::new(schema, rows_stream)))
-            },
-            None => Ok(None)
+            }
+            None => Ok(None),
         }
     }
 }
@@ -219,23 +216,25 @@ where
 /// The main object of this crate.
 pub struct Client<C> {
     auth: Authenticator<C>,
-    big_query_read_client: BigQueryReadClient<Channel>
+    big_query_read_client: BigQueryReadClient<Channel>,
 }
 
 impl<C> Client<C>
 where
-    C: Connect + Clone + Send + Sync + 'static
+    C: Connect + Clone + Send + Sync + 'static,
 {
     /// Create a new client using `auth` as a token generator.
     pub async fn new(auth: Authenticator<C>) -> Result<Self, Error> {
-        let tls_config = ClientTlsConfig::new()
-            .domain_name(API_DOMAIN);
+        let tls_config = ClientTlsConfig::new().domain_name(API_DOMAIN);
         let channel = Channel::from_static(API_ENDPOINT)
             .tls_config(tls_config)
             .connect()
             .await?;
         let big_query_read_client = BigQueryReadClient::new(channel);
-        Ok(Self { auth, big_query_read_client })
+        Ok(Self {
+            auth,
+            big_query_read_client,
+        })
     }
 
     /// Create a new [`ReadSessionBuilder`](ReadSessionBuilder).
@@ -254,17 +253,14 @@ where
     }
     async fn create_read_session(
         &mut self,
-        mut req: CreateReadSessionRequest
+        mut req: CreateReadSessionRequest,
     ) -> Result<BigQueryReadSession, Error> {
-        let table_uri = &req
-            .read_session
-            .as_ref()
-            .unwrap()
-            .table;
+        let table_uri = &req.read_session.as_ref().unwrap().table;
         let params = format!("read_session.table={}", table_uri);
         let wrapped = self.new_request(req, &params).await?;
 
-        let read_session = self.big_query_read_client
+        let read_session = self
+            .big_query_read_client
             .create_read_session(wrapped)
             .await?
             .into_inner();
@@ -272,15 +268,16 @@ where
     }
     async fn read_stream_rows(
         &mut self,
-        stream: &str
+        stream: &str,
     ) -> Result<Streaming<ReadRowsResponse>, Error> {
         let req = ReadRowsRequest {
             read_stream: stream.to_string(),
-            offset: 0  // TODO
+            offset: 0, // TODO
         };
         let params = format!("read_stream={}", req.read_stream);
         let wrapped = self.new_request(req, &params).await?;
-        let read_rows_response = self.big_query_read_client
+        let read_rows_response = self
+            .big_query_read_client
             .read_rows(wrapped)
             .await?
             .into_inner();
@@ -308,11 +305,8 @@ mod tests {
 
             let mut client = Client::new(auth).await.unwrap();
 
-            let test_table = Table::new(
-                "bigquery-public-data",
-                "london_bicycles",
-                "cycle_stations"
-            );
+            let test_table =
+                Table::new("bigquery-public-data", "london_bicycles", "cycle_stations");
 
             let mut read_session = client
                 .read_session_builder(test_table)
@@ -324,10 +318,7 @@ mod tests {
             let mut num_rows = 0;
 
             while let Some(stream_reader) = read_session.next_stream().await.unwrap() {
-                let mut arrow_stream_reader = stream_reader
-                    .into_arrow_reader()
-                    .await
-                    .unwrap();
+                let mut arrow_stream_reader = stream_reader.into_arrow_reader().await.unwrap();
                 while let Some(record_batch) = arrow_stream_reader.next().unwrap() {
                     num_rows += record_batch.num_rows();
                 }

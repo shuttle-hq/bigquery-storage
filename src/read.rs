@@ -1,12 +1,14 @@
 use tonic::{Status, Streaming};
 
-use futures::stream::{Stream, StreamExt, TryStream, TryStreamExt};
 use futures::future::ready;
+use futures::stream::{Stream, StreamExt, TryStream, TryStreamExt};
 
 use std::io::{Cursor, Write};
 
-use crate::{ReadSession, Error};
-use crate::googleapis::{ArrowSchema, ArrowRecordBatch, read_rows_response::Rows, read_session::Schema, ReadRowsResponse};
+use crate::googleapis::{
+    read_rows_response::Rows, read_session::Schema, ArrowRecordBatch, ArrowSchema, ReadRowsResponse,
+};
+use crate::{Error, ReadSession};
 
 #[cfg(feature = "arrow")]
 use arrow::{ipc::reader::StreamReader as ArrowStreamReader, record_batch::RecordBatch};
@@ -20,8 +22,7 @@ fn strip_continuation_bytes(msg: &[u8]) -> Result<&[u8], Error> {
     if header != [255; 4] {
         Err(Error::invalid("invalid arrow message"))
     } else {
-        let tail = msg.get(4..)
-            .ok_or(Error::invalid("empty arrow message"))?;
+        let tail = msg.get(4..).ok_or(Error::invalid("empty arrow message"))?;
         Ok(tail)
     }
 }
@@ -32,7 +33,7 @@ pub type DefaultArrowStreamReader = ArrowStreamReader<Cursor<Vec<u8>>>;
 /// A wrapper around a [BigQuery Storage stream](https://cloud.google.com/bigquery/docs/reference/storage#read_from_a_session_stream).
 pub struct RowsStreamReader {
     schema: Schema,
-    upstream: Streaming<ReadRowsResponse>
+    upstream: Streaming<ReadRowsResponse>,
 }
 
 impl RowsStreamReader {
@@ -43,34 +44,30 @@ impl RowsStreamReader {
     /// Consume the entire stream into an Arrow [StreamReader](arrow::ipc::reader::StreamReader).
     #[cfg(feature = "arrow")]
     pub async fn into_arrow_reader(self) -> Result<DefaultArrowStreamReader, Error> {
-        let mut serialized_arrow_stream = self.upstream
+        let mut serialized_arrow_stream = self
+            .upstream
             .map_err(|e| e.into())
             .and_then(|resp| {
                 let ReadRowsResponse { rows, .. } = resp;
-                let out = rows
-                    .ok_or(Error::invalid("no rows received"))
-                    .and_then(|rows| {
-                        match rows {
+                let out =
+                    rows.ok_or(Error::invalid("no rows received"))
+                        .and_then(|rows| match rows {
                             Rows::ArrowRecordBatch(ArrowRecordBatch {
-                                serialized_record_batch, ..
-                            }) => {
-                                Ok(serialized_record_batch)
-                            },
+                                serialized_record_batch,
+                                ..
+                            }) => Ok(serialized_record_batch),
                             _ => {
                                 let err = Error::invalid("expected arrow record batch");
                                 Err(err)
                             }
-                        }
-                    });
+                        });
                 ready(out)
             })
             .boxed();
 
         let serialized_schema = match self.schema {
-            Schema::ArrowSchema(ArrowSchema { serialized_schema }) => {
-                serialized_schema
-            },
-            _ => return Err(Error::invalid("expected arrow schema"))
+            Schema::ArrowSchema(ArrowSchema { serialized_schema }) => serialized_schema,
+            _ => return Err(Error::invalid("expected arrow schema")),
         };
 
         let mut buf = Vec::new();

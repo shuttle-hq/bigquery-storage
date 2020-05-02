@@ -2,8 +2,12 @@
 name = "bigquery-storage"
 version = "0.1.0"
 authors = ["Open-Source <opensource@openquery.io>"]
+description = "A small wrapper around the Google BigQuery Storage API"
+keywords = [ "google", "bigquery" ]
 edition = "2018"
 license = "Apache-2.0"
+homepage = "https://github.com/openquery-io/bigquery-storage"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -26,7 +30,3 @@ yup-oauth2 = { version = "4.1.2" }
 hyper = { version = "0.13.5" }
 
 arrow = { version = "0.16.0", optional = true }
-#derive_more = "0.99.0"
-
-#futures_01 = { package = "futures", version = "=0.1.29" }
-#hyper = { package = "hyper", version = "0.12.27" }
