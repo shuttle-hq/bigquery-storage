@@ -1,18 +1,23 @@
 //! The main module of this crate.
 //! # Example
-//! To build a [`Client`]() you just need an [`Authenticator`](yup_oauth2::authenticator::Authenticator). For example, if you want to use a service account:
+//! To build a [`Client`](Client) you just need an [`Authenticator`](yup_oauth2::authenticator::Authenticator). For example, if you want to use a service account:
 //! ```rust
-//! // 1. Load the secret
-//! let service_account_key = yup_oauth2::read_service_account_key("clientsecret.json")
-//!     .await?;
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // 1. Load the desired secret (here, a service account key)
+//!     let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
+//!         .await?;
 //! 
-//! // 2. Create an Authenticator
-//! let auth = yup_oauth2::ServiceAccountAuthenticator::builder(service_account_key)
-//!     .build()
-//!     .await?;
-//!
-//! // 3. Create a Client
-//! let mut client = bigquery_storage::Client::new(auth).await?;
+//!     // 2. Create an Authenticator
+//!     let auth = yup_oauth2::ServiceAccountAuthenticator::builder(sa_key)
+//!         .build()
+//!         .await?;
+//! 
+//!     // 3. Create a Client
+//!     let mut client = bigquery_storage::Client::new(auth).await?;
+//! 
+//!     Ok(())
+//! }
 //! ```
 use std::sync::{Arc, Mutex};
 
@@ -290,7 +295,7 @@ mod tests {
     use tokio::runtime::Runtime;
 
     #[test]
-    fn create_read_session() {
+    fn read_a_table_with_arrow() {
         let mut rt = Runtime::new().unwrap();
         rt.block_on(async {
             let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
@@ -317,6 +322,7 @@ mod tests {
                 .unwrap();
 
             let mut num_rows = 0;
+
             while let Some(stream_reader) = read_session.next_stream().await.unwrap() {
                 let mut arrow_stream_reader = stream_reader
                     .into_arrow_reader()
@@ -326,7 +332,8 @@ mod tests {
                     num_rows += record_batch.num_rows();
                 }
             }
-            panic!()
+
+            assert_eq!(num_rows, 768);
         })
     }
 }

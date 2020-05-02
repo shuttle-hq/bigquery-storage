@@ -10,45 +10,55 @@
 //! 4. Each storage stream is wrapped in a [`RowsStreamReader`](crate::read::RowsStreamReader). This will let you consume the stream into an Arrow [`StreamReader`](arrow::ipc::reader::StreamReader), at which point the data will actually be downloaded.
 //! # Example
 //! ```rust
-//! let service_account_key = yup_oauth2::read_service_account_key("clientsecret.json")
-//!     .await
-//!     .unwrap();
-//!
-//! let auth = yup_oauth2::ServiceAccountAuthenticator::builder(service_account_key)
-//!     .build()
-//!     .await
-//!     .unwrap();
+//! use bigquery_storage::{Table, Client};
 //! 
-//! let mut client = Client::new(auth).await.unwrap();
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // 1. Load the desired secret (here, a service account key)
+//!     let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
+//!         .await?;
 //! 
-//! let test_table = Table::new(
-//!     "bigquery-public-data",
-//!     "london_bicycles",
-//!     "cycle_stations"
-//! );
+//!     // 2. Create an Authenticator
+//!     let auth = yup_oauth2::ServiceAccountAuthenticator::builder(sa_key)
+//!         .build()
+//!         .await?;
 //! 
-//! let mut read_session = client
-//!     .read_session(test_table)
-//!     .parent_project_id("openquery-dev".to_string())
-//!     .build()
-//!     .await
-//!     .unwrap();
+//!     // 3. Create a Client
+//!     let mut client = Client::new(auth).await?;
 //! 
-//! let stream_reader = read_session
-//!     .next_stream()
-//!     .await
-//!     .unwrap()
-//!     .expect("did not get any stream");
+//!     // Reading the content of a table `bigquery-public-beta:london_bicycles.cycle_stations`
+//!     let test_table = Table::new(
+//!         "bigquery-public-data",
+//!         "london_bicycles",
+//!         "cycle_stations"
+//!     );
 //! 
-//! let mut arrow_stream_reader = stream_reader
-//!     .into_arrow_reader()
-//!     .await
-//!     .unwrap();
+//!     // Create a new ReadSession; the `parent_project_id` is the ID of the GCP project
+//!     // that owns the read job. This does not download any data.
+//!     let mut read_session = client
+//!         .read_session_builder(test_table)
+//!         .parent_project_id("openquery-dev".to_string())
+//!         .build()
+//!         .await?;
 //! 
-//! arrow_stream_reader
-//!     .next()
-//!     .unwrap()
-//!     .expect("no record batch");
+//!     // Take the first stream in the queue for this ReadSession.
+//!     let stream_reader = read_session
+//!         .next_stream()
+//!         .await?
+//!         .expect("did not get any stream");
+//! 
+//!     // The stream is consumed to yield an Arrow StreamReader, which does download the
+//!     // data.
+//!     let mut arrow_stream_reader = stream_reader
+//!         .into_arrow_reader()
+//!         .await?;
+//! 
+//!     let arrow_record_batch = arrow_stream_reader
+//!         .next()?
+//!         .expect("no record batch");
+//! 
+//!     Ok(())
+//! }
 //! ```
 //! # Authentication
 //! For authentication you need an [Authenticator](yup_oauth2::authenticator::Authenticator), which is provided by the [yup_oauth2](yup_oauth2) crate.

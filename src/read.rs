@@ -82,6 +82,10 @@ impl RowsStreamReader {
             buf.extend(body);
         }
 
+        // Arrow StreamReader expects a zero message to signal the end
+        // of the stream. Gotta give the people what they want.
+        buf.extend(&[0u8; 4]);
+
         let reader = ArrowStreamReader::try_new(Cursor::new(buf))?;
 
         Ok(reader)
