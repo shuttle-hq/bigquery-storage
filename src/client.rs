@@ -4,13 +4,17 @@ use yup_oauth2::authenticator::Authenticator;
 use hyper::client::connect::Connect;
 
 use tonic::transport::{Channel, ClientTlsConfig};
-use tonic::Request;
+use tonic::{Request, Streaming};
 use tonic::metadata::MetadataValue;
 use prost_types::Timestamp;
 
+use futures::stream::{Stream, StreamExt};
+
 use crate::googleapis::big_query_read_client::BigQueryReadClient;
-use crate::googleapis::{CreateReadSessionRequest, ReadSession as BigQueryReadSession, DataFormat, read_session::{TableModifiers, TableReadOptions}};
+use crate::googleapis::{ReadStream, ReadRowsRequest, ReadRowsResponse, CreateReadSessionRequest, ReadSession as BigQueryReadSession, DataFormat, read_session::{TableModifiers, TableReadOptions}};
 use crate::Error;
+
+use crate::RowsStreamReader;
 
 static SCHEME: &'static str = "https";
 static API_ENDPOINT: &'static str = "https://bigquerystorage.googleapis.com";
@@ -110,7 +114,7 @@ impl<'a, C> ReadSessionBuilder<'a, C>
 where
     C: Connect + Clone + Send + Sync + 'static
 {
-    pub async fn build(self) -> Result<ReadSession, Error> {
+    pub async fn build(self) -> Result<ReadSession<'a, C>, Error> {
         let table = self.table.to_string();
 
         let mut inner = BigQueryReadSession {
@@ -151,11 +155,39 @@ where
             .create_read_session(req)
             .await?;
 
-        Ok(ReadSession(inner))
+        Ok(ReadSession {
+            client: self.client,
+            inner
+        })
     }
 }
 
-pub struct ReadSession(BigQueryReadSession);
+pub struct ReadSession<'a, C>{
+    client: &'a mut Client<C>,
+    inner: BigQueryReadSession
+}
+
+impl<'a, C> ReadSession<'a, C>
+where
+    C: Connect + Clone + Send + Sync + 'static
+{
+    pub async fn next_stream(
+        &mut self
+    ) -> Result<Option<RowsStreamReader>, Error> {
+        match self.inner.streams.pop() {
+            Some(ReadStream { name }) => {
+                let rows_stream = self.client
+                    .read_stream_rows(&name)
+                    .await?;
+                let schema = self.inner.schema
+                    .clone()
+                    .ok_or(Error::invalid("empty schema response"))?;
+                Ok(Some(RowsStreamReader::new(schema, rows_stream)))
+            },
+            None => Ok(None)
+        }
+    }
+}
 
 pub struct Client<C> {
     auth: Authenticator<C>,
@@ -207,6 +239,22 @@ where
             .into_inner();
         Ok(read_session)
     }
+    async fn read_stream_rows(
+        &mut self,
+        stream: &str
+    ) -> Result<Streaming<ReadRowsResponse>, Error> {
+        let req = ReadRowsRequest {
+            read_stream: stream.to_string(),
+            offset: 0  // TODO
+        };
+        let params = format!("read_stream={}", req.read_stream);
+        let wrapped = self.new_request(req, &params).await?;
+        let read_rows_response = self.big_query_read_client
+            .read_rows(wrapped)
+            .await?
+            .into_inner();
+        Ok(read_rows_response)
+    }
 }
 
 #[cfg(test)]
@@ -226,18 +274,37 @@ mod tests {
                 .build()
                 .await
                 .unwrap();
+
             let mut client = Client::new(auth).await.unwrap();
+
             let test_table = Table::new(
                 "bigquery-public-data",
                 "london_bicycles",
                 "cycle_stations"
             );
-            let read_session = client
+
+            let mut read_session = client
                 .read_session(test_table)
                 .parent_project_id("openquery-dev".to_string())
                 .build()
                 .await
                 .unwrap();
+
+            let stream_reader = read_session
+                .next_stream()
+                .await
+                .unwrap()
+                .expect("did not get any stream");
+
+            let mut arrow_stream_reader = stream_reader
+                .into_arrow_reader()
+                .await
+                .unwrap();
+
+            arrow_stream_reader
+                .next()
+                .unwrap()
+                .expect("no record batch");
         })
     }
 }
