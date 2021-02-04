@@ -52,8 +52,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let arrow_record_batch = arrow_stream_reader
-        .next()?
-        .expect("no record batch");
+        .next()
+        .expect("no record batch")?;
 
     Ok(())
 }

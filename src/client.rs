@@ -2,7 +2,7 @@
 //! # Example
 //! To build a [`Client`](Client) you just need an [`Authenticator`](yup_oauth2::authenticator::Authenticator). For example, if you want to use a service account:
 //! ```rust
-//! #[tokio::main]
+//! #[tokio::main(flavor = "current_thread")]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // 1. Load the desired secret (here, a service account key)
 //!     let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
@@ -222,7 +222,7 @@ where
     pub async fn new(auth: Authenticator<C>) -> Result<Self, Error> {
         let tls_config = ClientTlsConfig::new().domain_name(API_DOMAIN);
         let channel = Channel::from_static(API_ENDPOINT)
-            .tls_config(tls_config)
+            .tls_config(tls_config)?
             .connect()
             .await?;
         let big_query_read_client = BigQueryReadClient::new(channel);
@@ -284,42 +284,36 @@ where
 mod tests {
     use super::*;
 
-    use tokio::runtime::Runtime;
+    #[tokio::test]
+    async fn read_a_table_with_arrow() {
+        let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
+            .await
+            .unwrap();
+        let auth = yup_oauth2::ServiceAccountAuthenticator::builder(sa_key)
+            .build()
+            .await
+            .unwrap();
 
-    #[test]
-    fn read_a_table_with_arrow() {
-        let mut rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
-                .await
-                .unwrap();
-            let auth = yup_oauth2::ServiceAccountAuthenticator::builder(sa_key)
-                .build()
-                .await
-                .unwrap();
+        let mut client = Client::new(auth).await.unwrap();
 
-            let mut client = Client::new(auth).await.unwrap();
+        let test_table = Table::new("bigquery-public-data", "london_bicycles", "cycle_stations");
 
-            let test_table =
-                Table::new("bigquery-public-data", "london_bicycles", "cycle_stations");
+        let mut read_session = client
+            .read_session_builder(test_table)
+            .parent_project_id("openquery-public-testing".to_string())
+            .build()
+            .await
+            .unwrap();
 
-            let mut read_session = client
-                .read_session_builder(test_table)
-                .parent_project_id("openquery-dev".to_string())
-                .build()
-                .await
-                .unwrap();
+        let mut num_rows = 0;
 
-            let mut num_rows = 0;
-
-            while let Some(stream_reader) = read_session.next_stream().await.unwrap() {
-                let mut arrow_stream_reader = stream_reader.into_arrow_reader().await.unwrap();
-                while let Some(record_batch) = arrow_stream_reader.next().unwrap() {
-                    num_rows += record_batch.num_rows();
-                }
+        while let Some(stream_reader) = read_session.next_stream().await.unwrap() {
+            let mut arrow_stream_reader = stream_reader.into_arrow_reader().await.unwrap();
+            while let Some(record_batch) = arrow_stream_reader.next() {
+                num_rows += record_batch.unwrap().num_rows();
             }
+        }
 
-            assert_eq!(num_rows, 768);
-        })
+        assert_eq!(num_rows, 789);
     }
 }

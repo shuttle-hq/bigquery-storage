@@ -12,7 +12,7 @@
 //! ```rust
 //! use bigquery_storage::{Table, Client};
 //!
-//! #[tokio::main]
+//! #[tokio::main(flavor = "current_thread")]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // 1. Load the desired secret (here, a service account key)
 //!     let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
@@ -37,7 +37,7 @@
 //!     // that owns the read job. This does not download any data.
 //!     let mut read_session = client
 //!         .read_session_builder(test_table)
-//!         .parent_project_id("openquery-dev".to_string())
+//!         .parent_project_id("openquery-public-testing".to_string())
 //!         .build()
 //!         .await?;
 //!
@@ -54,8 +54,8 @@
 //!         .await?;
 //!
 //!     let arrow_record_batch = arrow_stream_reader
-//!         .next()?
-//!         .expect("no record batch");
+//!         .next()
+//!         .expect("no record batch")?;
 //!
 //!     Ok(())
 //! }
