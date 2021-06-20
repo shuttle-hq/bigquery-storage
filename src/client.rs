@@ -161,6 +161,8 @@ where
             tro.row_restriction = row_restriction;
         }
 
+        inner.read_options = Some(tro);
+
         let parent_project_id = self.opts.parent_project_id.unwrap_or(self.table.project_id);
         let parent = format!("projects/{}", parent_project_id);
         let max_stream_count = self.opts.max_stream_count.unwrap_or_default();
