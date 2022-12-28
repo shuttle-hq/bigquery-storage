@@ -1,27 +1,27 @@
 name: CI
 
-on:
-  push:
-    branches:
-    - master
+on: [push, workflow_dispatch]
 
 jobs:
   tests:
     name: tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os:
-        - ubuntu-latest
-        - macos-latest
+    runs-on: ubuntu
+
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout
+      uses: actions/checkout@v3
       with:
         submodules: true
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-    - env:
-        SA: ${{ secrets.TESTING_SERVICE_ACCOUNT }}
-      run: echo $SA > clientsecret.json
-    - run: cargo test
+
+    - name: Rust Toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cargo Test
+      env:
+        SA: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      run: |
+        echo $SA > clientsecret.json
+        cargo test
+
+    - name: Clippy
+      run: cargo clippy --all-features -- --deny warnings
