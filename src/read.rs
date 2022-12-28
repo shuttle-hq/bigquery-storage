@@ -5,7 +5,7 @@ use futures::stream::{StreamExt, TryStreamExt};
 
 use std::io::Cursor;
 
-use crate::googleapis::{
+use crate::googleapis::google::cloud::bigquery::storage::v1::{
     read_rows_response::Rows, read_session::Schema, ArrowRecordBatch, ArrowSchema, ReadRowsResponse,
 };
 use crate::Error;

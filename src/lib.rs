@@ -66,7 +66,7 @@ pub use yup_oauth2;
 
 pub mod googleapis {
     //! Codegenerated from [`google.cloud.bigquery.storage.v1`](https://github.com/googleapis/googleapis/tree/master/google/cloud/bigquery/storage/v1).
-    tonic::include_proto!("google.cloud.bigquery.storage.v1");
+    include!(concat!(env!("OUT_DIR"), "/googleapis.rs"));
 }
 
 pub mod client;

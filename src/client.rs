@@ -27,8 +27,8 @@ use tonic::metadata::MetadataValue;
 use tonic::transport::{Channel, ClientTlsConfig};
 use tonic::{Request, Streaming};
 
-use crate::googleapis::big_query_read_client::BigQueryReadClient;
-use crate::googleapis::{
+use crate::googleapis::google::cloud::bigquery::storage::v1::{
+big_query_read_client::BigQueryReadClient,
     read_session::{TableModifiers, TableReadOptions},
     CreateReadSessionRequest, DataFormat, ReadRowsRequest, ReadRowsResponse,
     ReadSession as BigQueryReadSession, ReadStream,
@@ -169,6 +169,7 @@ where
             parent,
             read_session: Some(inner),
             max_stream_count,
+            preferred_min_stream_count: 1, // TODO: Make this configurable.
         };
 
         let inner = self.client.create_read_session(req).await?;
@@ -286,6 +287,10 @@ mod tests {
 
     #[tokio::test]
     async fn read_a_table_with_arrow() {
+        if !std::path::Path::new("clientsecret.json").exists() {
+            println!("skipping test, credentials not provided...");
+            return;
+        }
         let sa_key = yup_oauth2::read_service_account_key("clientsecret.json")
             .await
             .unwrap();
