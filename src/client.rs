@@ -19,7 +19,10 @@
 //!     Ok(())
 //! }
 //! ```
-use hyper::client::connect::Connect;
+use hyper::client::connect::Connection;
+use hyper::service::Service;
+use hyper::Uri;
+use tokio::io::{AsyncRead, AsyncWrite};
 use yup_oauth2::authenticator::Authenticator;
 
 use prost_types::Timestamp;
@@ -35,10 +38,11 @@ use crate::googleapis::{
 };
 use crate::Error;
 use crate::RowsStreamReader;
+use std::error::Error as stdError;
 
-static API_ENDPOINT: &'static str = "https://bigquerystorage.googleapis.com";
-static API_DOMAIN: &'static str = "bigquerystorage.googleapis.com";
-static API_SCOPE: &'static str = "https://www.googleapis.com/auth/bigquery";
+static API_ENDPOINT: &str = "https://bigquerystorage.googleapis.com";
+static API_DOMAIN: &str = "bigquerystorage.googleapis.com";
+static API_SCOPE: &str = "https://www.googleapis.com/auth/bigquery";
 
 /// A fully qualified BigQuery table. This requires a `project_id`, a `dataset_id`
 /// and a `table_id`. Only alphanumerical and underscores are allowed for `dataset_id`
@@ -131,7 +135,10 @@ read_session_builder! {
 
 impl<'a, C> ReadSessionBuilder<'a, C>
 where
-    C: Connect + Clone + Send + Sync + 'static,
+    C: Service<Uri> + Clone + Send + Sync + 'static,
+    C::Response: Connection + AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    C::Future: Send + Unpin + 'static,
+    C::Error: Into<Box<dyn stdError + Send + Sync>>,
 {
     /// Build the [`ReadSession`](ReadSession). This will hit Google's API and
     /// prepare the desired read streams.
@@ -189,7 +196,10 @@ pub struct ReadSession<'a, C> {
 
 impl<'a, C> ReadSession<'a, C>
 where
-    C: Connect + Clone + Send + Sync + 'static,
+    C: Service<Uri> + Clone + Send + Sync + 'static,
+    C::Response: Connection + AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    C::Future: Send + Unpin + 'static,
+    C::Error: Into<Box<dyn stdError + Send + Sync>>,
 {
     /// Take the next stream in this read session. Returns `None` when all streams have been taken.
     pub async fn next_stream(&mut self) -> Result<Option<RowsStreamReader>, Error> {
@@ -200,7 +210,7 @@ where
                     .inner
                     .schema
                     .clone()
-                    .ok_or(Error::invalid("empty schema response"))?;
+                    .ok_or_else(|| Error::invalid("empty schema response"))?;
                 Ok(Some(RowsStreamReader::new(schema, rows_stream)))
             }
             None => Ok(None),
@@ -216,7 +226,10 @@ pub struct Client<C> {
 
 impl<C> Client<C>
 where
-    C: Connect + Clone + Send + Sync + 'static,
+    C: Service<Uri> + Clone + Send + Sync + 'static,
+    C::Response: Connection + AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    C::Future: Send + Unpin + 'static,
+    C::Error: Into<Box<dyn stdError + Send + Sync>>,
 {
     /// Create a new client using `auth` as a token generator.
     pub async fn new(auth: Authenticator<C>) -> Result<Self, Error> {
@@ -237,8 +250,11 @@ where
         ReadSessionBuilder::new(self, table)
     }
     async fn new_request<D>(&self, t: D, params: &str) -> Result<Request<D>, Error> {
-        let token = self.auth.token(&[API_SCOPE]).await?;
-        let bearer_token = format!("Bearer {}", token.as_str());
+        let access_token = self.auth.token(&[API_SCOPE]).await?;
+        let token = access_token
+            .token()
+            .ok_or_else(|| Error::invalid("access_token not found"))?;
+        let bearer_token = format!("Bearer {}", token);
         let bearer_value = MetadataValue::from_str(&bearer_token)?;
         let mut req = Request::new(t);
         let meta = req.metadata_mut();

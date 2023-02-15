@@ -17,16 +17,14 @@ default = [ "arrow" ]
 [build-dependencies]
 tonic-build = "0.8.4"
 
-[dev-dependencies]
-tokio = { version = "1.25", features = [ "rt", "macros" ] }
-
 [dependencies]
 futures = "0.3"
 tonic = { version = "0.8.3", features = ["transport", "tls", "tls-roots"] }
 prost = "0.11.6"
 prost-types = "0.11.6"
+tokio = { version = "1.0", features = ["fs", "macros", "io-std", "io-util", "time", "sync", "rt"] }
 
-yup-oauth2 = { version = "8.1" }
+yup-oauth2 = { version = "8.1.0" }
 hyper = { version = "0.14" }
 
 arrow = { version = "33.0", optional = true }
