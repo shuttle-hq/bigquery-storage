@@ -83,7 +83,7 @@ impl RowsStreamReader {
         // of the stream. Gotta give the people what they want.
         buf.extend(&[0u8; 4]);
 
-        let reader = ArrowStreamReader::try_new(Cursor::new(buf))?;
+        let reader = ArrowStreamReader::try_new(Cursor::new(buf), None)?;
 
         Ok(reader)
     }
